@@ -98,12 +98,19 @@ plot(CA_ppt, main = 'Mean Annual Precipitation (mm)', xlab = 'lon', ylab = 'lat'
 #Ideally, we would download maps of projected future climate variables, as determined by ensembles of 
 #climate change projection models such as Dr. Silver discussed in lecture. However, in the interest
 #of simplicity here, we will create our own future-scenario data by simply:
-#   1.) adding 3 degrees Celsius to our current MAT data
+#   1.) adding 4 degrees Celsius to our current MAT data
 #   2.) multiplying our PPT data by both 0.8 and 1.2 
     #   (i.e. creating two possible future precipitation scenarios, one 20% wetter than the past, one 20% drier)
+#Creating these two alternative scenarios is one way of accounting for uncertainty about how climate change
+#will affect future climates in CA. Obviously, the future of climate change is uncertain in many ways (e.g. which
+#RCP is most representative of how society will respond to climate change? exactly how much warming will a
+#given RCP cause? how will that global mean warming affect the diversity of local climates in CA?). But
+#the future of CA precipitation is a particularly open question, and this uncertainty is particularly
+#important given the relevance of water to ecosystems, especially in ecosystems that experience extreme water
+#limitation, such as occur in much of CA.
 
 #create future layers
-CA_fut_mat = CA_mat + 5
+CA_fut_mat = CA_mat + 4
 CA_fut_ppt_wet = CA_ppt * 1.2
 CA_fut_ppt_dry = CA_ppt * 0.8
 
@@ -164,6 +171,12 @@ pres <- gridSample(pres.all, CA_ppt, n=1)
 #data from numerous locations telling us that Ponderosa pine definitely does NOT grow there, we will instead
 #create random points all over our map, in places where we don't have presence data, and use that as a
 #guesstimate of absence.
+#This brings up yet another type of uncertainty that comes into play in our models: uncertainty about exactly
+#where the species IS and where it ISN'T. We do not have perfect, exhaustive data for the former, and we don't
+#have any true data for the latter. This does not mean that we cannot create a reasonable model. It simply
+#means that there will be some 'noise' in our estimation of the TRUE relationship between climate and species 
+#suitability that we are interested in. This is a caveat that we will keep in mind when considering and
+#assessing our results. 
 
 #generate pseudoabsence points
 pseu = randomPoints(CA_ppt, 1000, pres)
@@ -173,7 +186,7 @@ proj4string(pseu) = proj4string(CA)
 pseu = pseu[CA,]
 pseu = as.data.frame(pseu)
 
-#plot both presences and background points over our other data
+#plot both presences and pseudoabsences over our other data
 plot(CA_ppt[[1]], main = 'Presence and pseudoabsence data, plotted over PPT (mm)')
 plot(CA, add = T)
 points(pres, col = 'blue', pch = 16, cex = 0.7)
@@ -260,9 +273,18 @@ mod = glm(form, family = binomial(link = 'logit'), data = reg.data)
 
 
 #use the model to project the species' range
+  #NOTE: The mask() command isn't necessary, and takes a while, so skip if need be
 curr_sdm = predict(raster::stack(CA_mat, CA_ppt), mod, type = 'response')
+
+curr_sdm = mask(curr_sdm, CA)
+
 fut_wet_sdm = predict(raster::stack(CA_fut_mat, CA_fut_ppt_wet), mod, type = 'response')
+
+curr_sdm = mask(fut_wet_sdm, CA)
+
 fut_dry_sdm = predict(raster::stack(CA_fut_mat, CA_fut_ppt_dry), mod, type = 'response')
+
+curr_sdm = mask(fut_dry_sdm, CA)
 
 
 #set threshold value and extent, to use in mapping the projections
