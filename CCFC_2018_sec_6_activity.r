@@ -8,12 +8,14 @@
 
 
 #install packages if needed, then load
-required.pkg = c("dismo","raster", "rgeos", "maptools")
+required.pkg = c("dismo","raster", "rgeos", "maptools", "rgdal", "jsonlite")
 pkgs.not.installed <- required.pkg[!sapply(required.pkg, function(p) require(p, character.only=T))]
 if (length(pkgs.not.installed) > 0){
   install.packages(pkgs.not.installed, dependencies=TRUE)
 }
 
+library(rgdal)
+library(jsonlite)
 library(dismo)
 library(raster)
 library(rgeos)
@@ -38,7 +40,7 @@ plot(CA)
 maptools::writePolyShape(CA, 'CA')
 
 #***FOR OFFLINE USE***
-CA = maptools::readShapePoly('CA.shp')
+CA = readOGR('CA.shp')
 
 
 
@@ -306,7 +308,7 @@ plot(CA, add = T)
 title('Species Distribution Models of Ponderosa pine,\nfor current climate and future scenarios', outer = T)
 par(op)
 
-#turn of device
+#turn off device
 dev.off()
 
 
@@ -349,17 +351,18 @@ dev.off()
 #OPTIONAL STEP 12: COMPARE MAT & PPT TO MAT & CWD
 #################################################
 
-#read in cwd and aet data
+#read in cwd data
 cwd = readRDS('./BCM2014_cwd1981_2010_wy_ave_HST.Rdata')
-aet = readRDS('./BCM2014_aet1981_2010_wy_ave_HST.Rdata')
 
-#reproject the rasters
+#reproject the raster
 cwd = projectRaster(cwd, crs = crs(mat))
-aet = projectRaster(aet, crs = crs(mat))
+
+#and crop it
+cwd = crop(cwd, CA)
 
 #create future proxies
-fut_cwd_dry = cwd + 60
-fut_cwd_wet = cwd - 60
+fut_cwd_dry = cwd + 500
+fut_cwd_wet = cwd - 500
 
 #get our backups
 p = backup_pres
@@ -389,6 +392,15 @@ cwd.reg.data = data.frame(cwd.pres.abs.data, MAT = mat.data, CWD = cwd.data)
 form = formula(PRESENCE ~ MAT + CWD)
 mod = glm(form, family = binomial(link = 'logit'), data = cwd.reg.data)
 
+#some code to make the extent and size of the rasters overlap, just for producing the projections
+extent(CA_mat) = extent(cwd)
+extent(CA_fut_mat) = extent(fut_cwd_wet)
+rs_mat = resample(CA_mat, cwd)
+rs_fut_mat = resample(CA_fut_mat, cwd)
+names(cwd) = c('CWD')
+names(fut_cwd_wet) = c('CWD')
+names(fut_cwd_dry) = c('CWD')
+
 #use the model to project the species' range
   #NOTE: The mask() command isn't necessary, and takes a while, so skip if need be
 cwd_curr_sdm = predict(raster::stack(CA_mat, cwd), mod, type = 'response')
@@ -417,7 +429,7 @@ plot(CA, add = T)
 title('Species Distribution Models of Ponderosa pine,\nfor current climate and future scenarios with CWD', outer = T)
 par(op)
 
-#turn of device
+#turn off device
 dev.off()
 
 #create a PDf to save the climatic niche graphs
