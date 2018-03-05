@@ -13,6 +13,7 @@ pkgs.not.installed <- required.pkg[!sapply(required.pkg, function(p) require(p, 
 if (length(pkgs.not.installed) > 0){
   install.packages(pkgs.not.installed, dependencies=TRUE)
 }
+
 library(dismo)
 library(raster)
 library(rgeos)
@@ -85,7 +86,7 @@ CA_ppt = crop(ppt, CA)
 names(CA_ppt) = "PPT"
 
 #plot the two rasters, for demo
-par(mfrow = c(2,1))
+par(mfrow = c(1,2))
 plot(CA_mat, main = 'Mean Annual Temperature (deg Celsius)', xlab = 'lon', ylab = 'lat'); plot(CA, add = T)
 plot(CA_ppt, main = 'Mean Annual Precipitation (mm)', xlab = 'lon', ylab = 'lat'); plot(CA, add = T)
 
@@ -160,6 +161,8 @@ pres.all <- pres.all[CA, ]
 #subsample to reduce points falling within the same grid cells
 pres <- gridSample(pres.all, CA_ppt, n=1)
 
+#save backup, for use in step 12
+backup_pres = pres
 
 
 ########################################
@@ -185,6 +188,9 @@ coordinates(pseu) = c('x', 'y')
 proj4string(pseu) = proj4string(CA)
 pseu = pseu[CA,]
 pseu = as.data.frame(pseu)
+
+#save backup, for use in step 12
+backup_pseu = pseu
 
 #plot both presences and pseudoabsences over our other data
 plot(CA_ppt[[1]], main = 'Presence and pseudoabsence data, plotted over PPT (mm)')
@@ -275,17 +281,12 @@ mod = glm(form, family = binomial(link = 'logit'), data = reg.data)
 #use the model to project the species' range
   #NOTE: The mask() command isn't necessary, and takes a while, so skip if need be
 curr_sdm = predict(raster::stack(CA_mat, CA_ppt), mod, type = 'response')
-
-curr_sdm = mask(curr_sdm, CA)
-
 fut_wet_sdm = predict(raster::stack(CA_fut_mat, CA_fut_ppt_wet), mod, type = 'response')
-
-curr_sdm = mask(fut_wet_sdm, CA)
-
 fut_dry_sdm = predict(raster::stack(CA_fut_mat, CA_fut_ppt_dry), mod, type = 'response')
 
-curr_sdm = mask(fut_dry_sdm, CA)
-
+curr_sdm = mask(curr_sdm, CA)
+fut_wet_sdm = mask(fut_wet_sdm, CA)
+fut_dry_sdm = mask(fut_dry_sdm, CA)
 
 #set threshold value and extent, to use in mapping the projections
 threshold = 0.6
@@ -295,14 +296,15 @@ extent <- extent(c(-125, -114, 32, 43))
 pdf('CCFC_Sec6_Ponderosa_pine_SDMs.pdf')
 
 #map the projections
-par(mfrow = c(1,3))
+op <- par(mfrow = c(2,2), oma = c(2,4,2,0) + 0.1, mar = c(2,0,2,1) + 0.1)
 plot(curr_sdm>= threshold, main = 'Current', xlab = 'lon', ylab = 'lat', legend = F, ext = extent)
 plot(CA, add = T)
-plot(fut_wet_sdm >= threshold, main = 'Hotter, wetter future', xlab = 'lon', ylab = 'lat', legend = F)
+plot(fut_wet_sdm >= threshold, main = 'Hotter, wetter', xlab = 'lon', ylab = 'lat', legend = F)
 plot(CA, add = T)
-plot(fut_dry_sdm >= threshold, main = 'Hotter, drier future', xlab = 'lon', ylab = 'lat', legend = F)
+plot(fut_dry_sdm >= threshold, main = 'Hotter, drier', xlab = 'lon', ylab = 'lat', legend = F)
 plot(CA, add = T)
-title('Species Distribution Models of Ponderosa pine, for current climate and future scenarios', outer = T)
+title('Species Distribution Models of Ponderosa pine,\nfor current climate and future scenarios', outer = T)
+par(op)
 
 #turn of device
 dev.off()
@@ -327,15 +329,114 @@ pdf('CCFC_Sec6_Ponderosa_pine_climatic_niche_graphs.pdf')
 
 #plot the niche graphs
 n_bg_pts = 150000
-par(mfrow = c(1,3))
+op <- par(mfrow = c(2,2), oma = c(1,1,3,1) + 0.1, mar = c(4,4,2,1) + 0.1)
 plot(sample(CA_mat@data@values, size = n_bg_pts, replace = F), sample(CA_ppt@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Current', xlab = 'MAT', ylab = 'PPT', xlim = c(0,30), ylim = c(0,2500))
 points(mat.pres, ppt.pres, col = 'blue')
-plot(sample(CA_fut_mat@data@values, size = n_bg_pts, replace = F), sample(CA_fut_ppt_wet@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Hotter, wetter future', xlab = 'MAT', ylab = 'PPT', xlim = c(0,30), ylim = c(0,2500))
+plot(sample(CA_fut_mat@data@values, size = n_bg_pts, replace = F), sample(CA_fut_ppt_wet@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Hotter, wetter', xlab = 'MAT', ylab = 'PPT', xlim = c(0,30), ylim = c(0,2500))
 points(mat.pres, ppt.pres, col = 'blue')
-plot(sample(CA_fut_mat@data@values, size = n_bg_pts, replace = F), sample(CA_fut_ppt_dry@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Hotter, drier future', xlab = 'MAT', ylab = 'PPT', xlim = c(0,30), ylim = c(0,2500))
+plot(sample(CA_fut_mat@data@values, size = n_bg_pts, replace = F), sample(CA_fut_ppt_dry@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Hotter, drier', xlab = 'MAT', ylab = 'PPT', xlim = c(0,30), ylim = c(0,2500))
 points(mat.pres, ppt.pres, col = 'blue')
-title('Ponderosa pine climatic niche (blue) on top of climate space across all of CA (gray), for current climate and future scenarios', outer = T)
+title('Ponderosa pine climatic niche (blue) on top of CA climate space (gray),\nfor current climate and future scenarios', outer = T)
+par(op)
 
 #turn off device
 dev.off()
+
+
+
+
+#################################################
+#OPTIONAL STEP 12: COMPARE MAT & PPT TO MAT & CWD
+#################################################
+
+#read in cwd and aet data
+cwd = readRDS('./BCM2014_cwd1981_2010_wy_ave_HST.Rdata')
+aet = readRDS('./BCM2014_aet1981_2010_wy_ave_HST.Rdata')
+
+#reproject the rasters
+cwd = projectRaster(cwd, crs = crs(mat))
+aet = projectRaster(aet, crs = crs(mat))
+
+#create future proxies
+fut_cwd_dry = cwd + 60
+fut_cwd_wet = cwd - 60
+
+#get our backups
+p = backup_pres
+s = backup_pseu
+
+#plot both presences and pseudoabsences over our other data
+plot(cwd [[1]], main = 'Presence and pseudoabsence data, plotted over CWD (mm)')
+plot(CA, add = T)
+points(p, col = 'blue', pch = 16, cex = 0.7)
+points(s, col = 'red', pch = 16, cex = 0.7)
+
+#extract cwd data to both presence and pseudoabsence points
+cwd.p = extract(cwd, p[,c("lon", "lat")])
+cwd.s = extract(cwd, s[,c("x", "y")])
+
+#create a column for the dependent variable in our model (where 0 = absence, 1 = presence)
+p <- cbind(p, PRESENCE=1)
+colnames(p) <- c("x","y","PRESENCE")
+s <- cbind(s, PRESENCE=0)
+
+#combine our presence and pseudoabsence data into a single data.frame
+cwd.pres.abs.data = rbind(p, s)
+cwd.data = c(cwd.p, cwd.s)
+cwd.reg.data = data.frame(cwd.pres.abs.data, MAT = mat.data, CWD = cwd.data)
+
+#use a GLM to create the SDM
+form = formula(PRESENCE ~ MAT + CWD)
+mod = glm(form, family = binomial(link = 'logit'), data = cwd.reg.data)
+
+#use the model to project the species' range
+  #NOTE: The mask() command isn't necessary, and takes a while, so skip if need be
+cwd_curr_sdm = predict(raster::stack(CA_mat, cwd), mod, type = 'response')
+cwd_fut_wet_sdm = predict(raster::stack(CA_fut_mat, fut_cwd_wet), mod, type = 'response')
+cwd_fut_dry_sdm = predict(raster::stack(CA_fut_mat, fut_cwd_dry), mod, type = 'response')
+
+cwd_curr_sdm = mask(cwd_curr_sdm, CA)
+cwd_fut_wet_sdm = mask(cwd_fut_wet_sdm, CA)
+cwd_fut_dry_sdm = mask(cwd_fut_dry_sdm, CA)
+
+#set threshold value and extent, to use in mapping the projections
+threshold = 0.6
+extent <- extent(c(-125, -114, 32, 43))
+
+#create a PDF of the maps
+pdf('CCFC_Sec6_Ponderosa_pine_SDMs_CWD.pdf')
+
+#map the projections
+op <- par(mfrow = c(2,2), oma = c(2,4,2,0) + 0.1, mar = c(2,0,2,1) + 0.1)
+plot(cwd_curr_sdm>= threshold, main = 'Current', xlab = 'lon', ylab = 'lat', legend = F, ext = extent)
+plot(CA, add = T)
+plot(cwd_fut_wet_sdm >= threshold, main = 'Hotter, wetter', xlab = 'lon', ylab = 'lat', legend = F)
+plot(CA, add = T)
+plot(cwd_fut_dry_sdm >= threshold, main = 'Hotter, drier', xlab = 'lon', ylab = 'lat', legend = F)
+plot(CA, add = T)
+title('Species Distribution Models of Ponderosa pine,\nfor current climate and future scenarios with CWD', outer = T)
+par(op)
+
+#turn of device
+dev.off()
+
+#create a PDf to save the climatic niche graphs
+pdf('CCFC_Sec6_Ponderosa_pine_climatic_niche_graphs_CWD.pdf')
+
+#plot the niche graphs
+n_bg_pts = 150000
+op <- par(mfrow = c(2,2), oma = c(1,1,3,1) + 0.1, mar = c(4,4,2,1) + 0.1)
+plot(sample(CA_mat@data@values, size = n_bg_pts, replace = F), sample(cwd@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Current', xlab = 'MAT', ylab = 'CWD', xlim = c(0,30), ylim = c(0,2500))
+points(mat.pres, ppt.pres, col = 'blue')
+plot(sample(CA_fut_mat@data@values, size = n_bg_pts, replace = F), sample(fut_cwd_wet@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Hotter, wetter', xlab = 'MAT', ylab = 'CWD', xlim = c(0,30), ylim = c(0,2500))
+points(mat.pres, ppt.pres, col = 'blue')
+plot(sample(CA_fut_mat@data@values, size = n_bg_pts, replace = F), sample(fut_cwd_dry@data@values, size = n_bg_pts, replace = F), col = 'gray', main = 'Hotter, drier', xlab = 'MAT', ylab = 'CWD', xlim = c(0,30), ylim = c(0,2500))
+points(mat.pres, ppt.pres, col = 'blue')
+title('Ponderosa pine climatic niche (blue) on top of CA climate space (gray),\nfor current climate and future scenarios with CWD', outer = T)
+par(op)
+
+#turn off device
+dev.off()
+
+
 
